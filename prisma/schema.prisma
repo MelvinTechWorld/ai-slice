@@ -1,0 +1,136 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- Copied verbatim from Assessment 1 (see DOCUMENTATION.md Section 1)
+// so foreign keys line up on a fresh migration in this repo's own database.
+
+model User {
+  id                   String                 @id @default(uuid())
+  email                String                 @unique
+  passwordHash         String
+  name                 String
+  createdAt            DateTime               @default(now())
+  sessions             Session[]
+  verificationCodes    VerificationCode[]
+  passwordResetTokens  PasswordResetToken[]
+  receipts             Receipt[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model VerificationCode {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code        String
+  expiresAt   DateTime
+  lastSentAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model RateLimit {
+  key       String   @id
+  points    Int      @default(1)
+  expiresAt DateTime
+}
+
+// --- Assessment 3 additions below.
+
+enum JobType {
+  EXTRACTION
+  FOLLOWUP
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model Receipt {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageKey       String   @unique
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  createdAt        DateTime @default(now())
+
+  jobs             Job[]
+  extraction       ExtractionResult?
+  followups        FollowupResult[]
+
+  // A user's own receipt list is always queried as
+  // WHERE userId = <session user>, so this index carries that query.
+  @@index([userId])
+}
+
+model Job {
+  id           String    @id @default(uuid())
+  receiptId    String
+  receipt      Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  type         JobType
+  status       JobStatus @default(PENDING)
+  attempts     Int       @default(0)
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  // The worker's poll query is WHERE status = PENDING ORDER BY createdAt.
+  @@index([status, createdAt])
+  // Looking up a receipt's own jobs to show processing state.
+  @@index([receiptId])
+}
+
+model ExtractionResult {
+  id           String    @id @default(uuid())
+  receiptId    String    @unique
+  receipt      Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  rawResponse  Json
+  merchant     String?
+  totalMinor   Int?
+  currency     String?
+  purchaseDate DateTime?
+  lineItems    Json
+  createdAt    DateTime  @default(now())
+
+  // One receipt gets extracted once. A second extraction is a re-run,
+  // not a second row — the unique constraint on receiptId is what
+  // makes that state impossible rather than merely undesired.
+}
+
+model FollowupResult {
+  id         String   @id @default(uuid())
+  receiptId  String
+  receipt    Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  jobId      String   @unique
+  action     String
+  resultText String
+  createdAt  DateTime @default(now())
+
+  @@index([receiptId])
+}
