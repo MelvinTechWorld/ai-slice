@@ -93,6 +93,7 @@ model Job {
   receiptId    String
   receipt      Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   type         JobType
+  action       String?
   status       JobStatus @default(PENDING)
   attempts     Int       @default(0)
   errorMessage String?

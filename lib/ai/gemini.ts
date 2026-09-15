@@ -6,6 +6,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AI_CONFIG } from "@/lib/ai/config";
 import { EXTRACTION_SYSTEM_PROMPT } from "@/lib/ai/prompts/extraction";
+import { FOLLOWUP_SYSTEM_PROMPT } from "@/lib/ai/prompts/followup";
 import {
   extractionResultSchema,
   GEMINI_EXTRACTION_RESPONSE_SCHEMA,
@@ -97,6 +98,60 @@ export async function extractReceipt(
 
   throw new Error(
     `Extraction failed after ${role.maxAttempts} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
+export async function runFollowup(
+  action: "summarize" | "rephrase" | "expand",
+  extractionData: unknown
+): Promise<string> {
+  const role = AI_CONFIG.roles.followup;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= role.maxAttempts; attempt++) {
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: role.model,
+          contents: [
+            {
+              text: `Action: ${action}\n\nExtracted receipt data:\n${JSON.stringify(
+                extractionData,
+                null,
+                2
+              )}`,
+            },
+          ],
+          config: {
+            systemInstruction: FOLLOWUP_SYSTEM_PROMPT,
+            temperature: role.temperature,
+            maxOutputTokens: role.maxOutputTokens,
+          },
+        }),
+        role.timeoutMs,
+        "Gemini followup call"
+      );
+
+      const text = response.text;
+      if (!text || !text.trim()) {
+        throw new Error("Empty response from model");
+      }
+
+      return text.trim();
+    } catch (err) {
+      lastError = err;
+      console.warn(`[gemini] followup attempt ${attempt}/${role.maxAttempts} failed:`, err);
+      if (attempt < role.maxAttempts) {
+        const backoff = 500 * attempt;
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      }
+    }
+  }
+
+  throw new Error(
+    `Followup failed after ${role.maxAttempts} attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
     }`
   );
 }
