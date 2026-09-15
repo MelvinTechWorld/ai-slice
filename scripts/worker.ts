@@ -79,7 +79,15 @@ async function main() {
     console.log(`[worker] starting, polling every ${POLL_INTERVAL_MS}ms, concurrency ${AI_CONFIG.queue.concurrency}`);
     // eslint-disable-next-line no-constant-condition
     while (true) {
-        await tick();
+        try {
+            await tick();
+        } catch (err) {
+            // A transient DB hiccup (e.g. Neon's serverless compute waking up)
+            // should not kill the whole worker. Log it and keep polling —
+            // this is what makes the worker resilient rather than needing a
+            // manual restart every time the connection blips.
+            console.error("[worker] tick failed, will retry next poll:", err);
+        }
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
 }
