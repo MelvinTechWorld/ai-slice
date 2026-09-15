@@ -1,15 +1,12 @@
 // scripts/worker.ts
 //
 // Standalone polling worker. Run in a second terminal alongside `npm run
-// dev`, via `npm run worker`. This is the queue: it polls the Job table
-// for PENDING rows, claims up to AI_CONFIG.queue.concurrency at a time,
-// and processes them.
+// dev`, via `npm run worker`. Polls the Job table for PENDING rows,
+// claims up to AI_CONFIG.queue.concurrency at a time, and processes them.
 //
-// Currently STUBBED: sleeps for 2s and marks each job DONE. No model call
-// yet. The point of building it this way is to prove the queue mechanics —
-// polling, the concurrency cap, PENDING -> PROCESSING -> DONE/FAILED — work
-// correctly before Gemini is anywhere in the picture. Swap the stub in
-// processJob() for the real extraction call once this is verified.
+// EXTRACTION jobs now call the real Gemini model (lib/ai/gemini.ts) and
+// save a validated ExtractionResult. FOLLOWUP jobs remain stubbed until
+// the result view exists to trigger them.
 //
 // Known limitation (goes in Section 7): this assumes exactly one worker
 // process running locally. Two workers polling at once could both claim
@@ -21,14 +18,20 @@
 
 import { prisma } from "../lib/db";
 import { AI_CONFIG } from "../lib/ai/config";
+import { downloadFromR2 } from "../lib/storage/r2";
+import { extractReceipt } from "../lib/ai/gemini";
+import type { Job, Receipt } from "@prisma/client";
 
 const POLL_INTERVAL_MS = 3000;
 
-async function claimNextJobs(limit: number) {
+type JobWithReceipt = Job & { receipt: Receipt };
+
+async function claimNextJobs(limit: number): Promise<JobWithReceipt[]> {
     const jobs = await prisma.job.findMany({
         where: { status: "PENDING" },
         orderBy: { createdAt: "asc" }, // FIFO
         take: limit,
+        include: { receipt: true },
     });
 
     if (jobs.length === 0) return [];
@@ -41,11 +44,37 @@ async function claimNextJobs(limit: number) {
     return jobs;
 }
 
-async function processJob(job: { id: string; type: string }) {
+async function processJob(job: JobWithReceipt) {
     console.log(`[worker] processing job ${job.id} (${job.type})`);
 
-    // STUB — replace with the real Gemini extraction/followup call.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (job.type === "EXTRACTION") {
+        const fileBuffer = await downloadFromR2(job.receipt.storageKey);
+        const { raw, parsed } = await extractReceipt(fileBuffer, job.receipt.mimeType);
+
+        await prisma.extractionResult.upsert({
+            where: { receiptId: job.receiptId },
+            create: {
+                receiptId: job.receiptId,
+                rawResponse: raw as any,
+                merchant: parsed.merchant,
+                totalMinor: parsed.totalMinor,
+                currency: parsed.currency,
+                purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
+                lineItems: parsed.lineItems as any,
+            },
+            update: {
+                rawResponse: raw as any,
+                merchant: parsed.merchant,
+                totalMinor: parsed.totalMinor,
+                currency: parsed.currency,
+                purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
+                lineItems: parsed.lineItems as any,
+            },
+        });
+    } else {
+        // FOLLOWUP — stubbed until the result view exists to trigger it.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+    }
 
     await prisma.job.update({
         where: { id: job.id },

@@ -6,6 +6,8 @@
 // Each parameter carries a one-line justification, which Section 5 of
 // DOCUMENTATION.md quotes directly.
 
+import { ThinkingLevel } from "@google/genai";
+
 const num = (value: string | undefined, fallback: number) =>
     value === undefined ? fallback : Number(value);
 
@@ -19,9 +21,17 @@ export const AI_CONFIG = {
             // Zero: extraction is transcription, not authorship. Any creativity here
             // is a wrong total on someone's receipt.
             temperature: 0,
-            // ~30 line items of JSON. Caps a runaway response before it costs a
-            // retry and a quota slot.
-            maxOutputTokens: num(process.env.EXTRACTION_MAX_TOKENS, 1024),
+            // Extraction is deterministic transcription, not reasoning — there is
+            // nothing to "think through" on a receipt. Gemini 3 Flash Preview
+            // defaults to thinking mode, which burns output-token budget on
+            // internal reasoning before writing the answer; a low thinking level
+            // on a task this simple avoids wasting tokens we need for the actual
+            // JSON, and avoids the response being truncated mid-object.
+            thinkingLevel: ThinkingLevel.LOW,
+            // ~30 line items of JSON. Raised from 1024 after a truncated-response
+            // failure (see Section 6) — thinking mode was consuming most of the
+            // original budget before any JSON was written.
+            maxOutputTokens: num(process.env.EXTRACTION_MAX_TOKENS, 2048),
             // A receipt that has not returned in 30s is not going to.
             timeoutMs: num(process.env.EXTRACTION_TIMEOUT_MS, 30_000),
             // Three attempts covers a transient 429 or one malformed response;

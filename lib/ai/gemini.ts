@@ -60,6 +60,7 @@ export async function extractReceipt(
             systemInstruction: EXTRACTION_SYSTEM_PROMPT,
             temperature: role.temperature,
             maxOutputTokens: role.maxOutputTokens,
+            thinkingConfig: { thinkingLevel: role.thinkingLevel },
             responseMimeType: "application/json",
             responseSchema: GEMINI_EXTRACTION_RESPONSE_SCHEMA,
           },
@@ -95,8 +96,7 @@ export async function extractReceipt(
   }
 
   throw new Error(
-    `Extraction failed after ${role.maxAttempts} attempts: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
+    `Extraction failed after ${role.maxAttempts} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)
     }`
   );
 }
