@@ -1,11 +1,14 @@
 // app/receipts/[id]/page.tsx
 //
-// Combines the processing-state and result screens into one page, per the
-// brief's list: "A processing state that honestly reflects what is
-// happening, showing pending, processing, done, or failed" and "A result
-// view showing the output" and "One user-triggered follow-up action."
-// Polls the status endpoint every 2s while the extraction job is not yet
-// finished, stops polling once it is.
+// Combines the processing-state and result screens into one page.
+//
+// FIX: the polling loop previously stopped for good once extraction
+// reached DONE (nothing left "ongoing" at that moment). Clicking
+// Summarize then did a single one-off status fetch, but never restarted
+// the loop — so even after the worker finished the follow-up job
+// seconds later, the page had no active poll left to notice and update.
+// pollKey forces the polling effect to start a fresh chain whenever a
+// follow-up is triggered.
 
 'use client';
 
@@ -54,6 +57,7 @@ export default function ReceiptStatusPage({
   const [data, setData] = useState<ReceiptStatus | null>(null);
   const [error, setError] = useState('');
   const [followupBusy, setFollowupBusy] = useState(false);
+  const [pollKey, setPollKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +94,9 @@ export default function ReceiptStatusPage({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [id]);
+    // pollKey has no meaning of its own — bumping it is just how we tell
+    // this effect "start a fresh polling chain now."
+  }, [id, pollKey]);
 
   const handleFollowup = async (action: 'summarize' | 'rephrase' | 'expand') => {
     setFollowupBusy(true);
@@ -105,10 +111,10 @@ export default function ReceiptStatusPage({
         setError(body.error || 'Could not start follow-up');
         return;
       }
-      const statusRes = await fetch(`/api/receipts/${id}`);
-      if (statusRes.ok) {
-        setData(await statusRes.json());
-      }
+      // Restart the polling loop rather than doing a single one-off
+      // check — the follow-up job takes several seconds and the loop
+      // above had already stopped itself once extraction finished.
+      setPollKey((k) => k + 1);
     } finally {
       setFollowupBusy(false);
     }
