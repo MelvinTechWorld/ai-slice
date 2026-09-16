@@ -27,28 +27,10 @@ them in the order the brief lists them so a reviewer can follow along.
 | 06 | `06-r2-object-matching-storage-key.png` | R2 bucket object at the same storage key, same file size (118.68 kB) as the database row | "A screenshot showing the database holds only a storage key, not the file" (storage half) | 15 Sep 2026 |
 | 07 | `07-concurrency-cap-worker-log.png` | Worker terminal: 5 uploads fired in a burst, processed in batches of 3 (the configured concurrency cap), not all 5 at once | "Your concurrency cap holding, demonstrated by uploading enough files at once and showing the provider request pattern" | 15 Sep 2026 |
 
-## Curl commands used
-
-Record the exact command and the exact response. Both are graded.
-
-### [Name of the thing being tested]
-
-```bash
-# Command:
-
-
-# Response:
-
-
-# What this proves:
-
-```
-
 ---
 
 ## Outstanding
 
-## Outstanding
-
-All five required evidence items from Assessment 3's "Prove it works" list are captured (above, items 01–07 covering the 5 requirements — two items each for the raw/parsed pairing and the storage-key proof). None outstanding.
-
+All five required evidence items from Assessment 3's "Prove it works" list are
+captured (above, 7 files covering the 5 requirements — two files each for the
+raw/parsed pairing and the storage-key proof). None outstanding.
